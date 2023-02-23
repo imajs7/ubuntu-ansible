@@ -7,16 +7,19 @@
     - docker_compose_version: "1.29.2"
 
   tasks:
+    # install git
     - name: Install Git
       apt:
         name: git
         state: present
 
+    # install docker engine
     - name: Install Docker Engine
       apt:
         name: docker.io
         state: present
 
+    # install docker compose
     - name: Install Docker Compose
       get_url:
         url: https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-Linux-x86_64
@@ -41,6 +44,7 @@
         state: started
         enabled: yes
 
+    # install fail2ban
     - name: Install Fail2ban
       apt:
         name: fail2ban
@@ -51,10 +55,72 @@
         name: fail2ban
         state: started
 
+    # copy local files to remote server
+    - name: Copy http-get-dos fail2ban filter
+      copy:
+        src: files/http-get-dos.conf
+        dest: /etc/fail2ban/filter.d/
+
+    - name: Copy sshd.conf filter file
+      copy:
+        src: files/sshd.conf
+        dest: /etc/fail2ban/filter.d/
+        mode: "0644"
+
+    # create ssh jail
+    - name: Create fail2ban jail.local file
+      copy:
+        dest: /etc/fail2ban/jail.local
+        content: |
+          [DEFAULT]
+          ignoreip = 127.0.0.1/8 ::1
+          bantime = 1h
+          findtime = 10m
+          maxretry = 5
+
+          [sshd]
+          enabled = true
+          port = ssh
+          filter = sshd
+          logpath = /var/log/auth.log
+          maxretry = 3
+
+    # Install UFW package
+    - name: Install UFW
+      apt:
+        name: ufw
+        state: present
+
+    # Configure firewall rules
+    - name: Allow SSH traffic
+      ufw:
+        rule: allow
+        proto: tcp
+        port: 22
+
+    - name: Allow HTTP traffic
+      ufw:
+        rule: allow
+        proto: tcp
+        port: 80
+
+    - name: Allow HTTPS traffic
+      ufw:
+        rule: allow
+        proto: tcp
+        port: 443
+
+    # Enable firewall and save rules
+    - name: Enable UFW
+      ufw:
+        state: enabled
+      notify: restart UFW
+
+  # Handlers
   handlers:
-    - name: Restart FirewallD
+    - name: Restart UFW
       service:
-        name: firewalld
+        name: ufw
         state: restarted
 
     - name: Restart Fail2ban
